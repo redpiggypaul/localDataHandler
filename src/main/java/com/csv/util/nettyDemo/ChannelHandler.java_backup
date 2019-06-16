@@ -1,0 +1,62 @@
+package concurrent.nettyDemo;
+
+import antlr.debug.MessageEvent;
+import com.sun.jdi.event.ExceptionEvent;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.SocketAddress;
+import java.nio.channels.Channel;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class ChannelHandler extends SimpleChannelHandler {
+    private ConcurrentHashMap<SocketAddress, ByteArrayOutputStream> socket2ByteArrayMap = new ConcurrentHashMap<>();
+
+    public ChannelHandler() {
+    }
+
+    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
+        channels.add(e.getChannel());
+        ChannelBuffer buffer = (ChannelBuffer) e.getMessage();
+        logger.info(e.getRemoteAddress().toString());
+
+        try {
+            SocketAddress curSocketAddress = e.getRemoteAddress();
+            ByteArrayOutputStream  baos = socket2ByteArrayMap.get(curSocketAddress);
+            if(baos == null){
+                baos = new ByteArrayOutputStream(2000);
+                socket2ByteArrayMap.put(curSocketAddress, baos);
+            }
+            baos.write(buffer.array());
+
+        } catch (IOException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    public void exceptionCaught(ChannelHandlerContext context, ExceptionEvent event) {
+        logger.error("Error", event.getCause());
+        Channel c = context.getChannel();
+        c.close().addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
+                if (future.isSuccess())
+                    channels.remove(future.getChannel());
+                else
+                    logger.error("FAILED to close channel");
+            }
+        });
+    }
+
+    @Override
+    public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+        SocketAddress curSocketAddress = e.getChannel().getRemoteAddress();
+        ByteArrayOutputStream  baos =socket2ByteArrayMap.remove(curSocketAddress);
+        if(baos != null && baos.size() != 0){
+            byte[] receivedBytes = baos.toByteArray();
+            receiver.receive(receivedBytes);
+        }
+        super.channelClosed(ctx, e);
+    }
+
+}

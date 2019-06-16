@@ -1,0 +1,59 @@
+package concurrent.nettyDemo;
+
+import antlr.debug.MessageEvent;
+
+import java.net.InetAddress;
+import java.util.Date;
+import java.util.logging.Logger;
+
+
+
+public class TelnetServerHandler extends SimpleChannelUpstreamHandler {
+
+    private static final Logger logger = Logger.getLogger(
+            TelnetServerHandler.class.getName());
+
+    @Override
+    public void handleUpstream(
+            ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
+        if (e instanceof ChannelStateEvent) {
+            logger.info(e.toString());
+        }
+        super.handleUpstream(ctx, e);
+    }
+
+    @Override
+    public void channelConnected(
+            ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+        // Send greeting for a new connection.
+        e.getChannel().write(
+                "Welcome to " + InetAddress.getLocalHost().getHostName() + "!\r\n");
+        e.getChannel().write("It is " + new Date() + " now.\r\n");
+    }
+
+    @Override
+    public void messageReceived(
+            ChannelHandlerContext ctx, MessageEvent e) {
+
+        String request = (String) e.getMessage();
+
+        // Generate and write a response.
+        String response;
+        boolean close = false;
+        if (request.length() == 0) {
+            response = "Please type something.\r\n";
+        } else if (request.toLowerCase().equals("bye")) {
+            response = "Have a good day!\r\n";
+            close = true;
+        } else {
+            response = "Did you say '" + request + "'?\r\n";
+        }
+
+        // We do not need to write a ChannelBuffer here.
+        // We know the encoder inserted at TelnetPipelineFactory will do the conversion.
+        ChannelFuture future = e.getChannel().write(response);
+        if (close) {
+            future.addListener(ChannelFutureListener.CLOSE);
+        }
+    }
+}
